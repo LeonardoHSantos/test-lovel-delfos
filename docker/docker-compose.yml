@@ -1,0 +1,88 @@
+version: "3.9"
+
+services:
+  postgres_source:
+    image: postgres:16-alpine
+    container_name: postgres_source
+    environment:
+      POSTGRES_DB: ${POSTGRES_SOURCE_DB:-energy_source}
+      POSTGRES_USER: ${POSTGRES_SOURCE_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SOURCE_PASSWORD:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_source_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_target:
+    image: postgres:16-alpine
+    container_name: postgres_target
+    environment:
+      POSTGRES_DB: ${POSTGRES_TARGET_DB:-energy_target}
+      POSTGRES_USER: ${POSTGRES_TARGET_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_TARGET_PASSWORD:-postgres}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_target_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    container_name: energy_source_api
+    env_file:
+      - ../.env
+    command: >
+      uvicorn src.source_api.main:app
+      --host 0.0.0.0
+      --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres_source:
+        condition: service_healthy
+
+  dagster-webserver:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    container_name: dagster_webserver
+    env_file:
+      - ../.env
+    command: >
+      dagster-webserver
+      -w src/orchestration/definitions.py
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres_source:
+        condition: service_healthy
+      postgres_target:
+        condition: service_healthy
+
+  dagster-daemon:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    container_name: dagster_daemon
+    env_file:
+      - ../.env
+    command: dagster-daemon run
+    depends_on:
+      dagster-webserver:
+        condition: service_started
+
+volumes:
+  postgres_source_data:
+  postgres_target_data:
+
