@@ -20,7 +20,7 @@ def get_data(
     end_date: str = Query(..., description="End datetime in ISO format"),
     variables: List[AllowedVariable] = Query(..., description="Variables to return"),
     db: Session = Depends(get_db),
-) -> List[DataPoint]:
+    ) -> List[DataPoint]:
     from datetime import datetime
 
     try:
